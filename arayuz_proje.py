@@ -306,17 +306,55 @@ class EslestirmeArayuzu:
         self.log(f"✅ Tamamlandı. Mutluluk: {self.sonuclar['greedy']['mutluluk']:.2f}", COLORS['success'])
 
     def red_sim_calistir(self):
-        if 'greedy' not in self.sonuclar: return
-        self.log("🔄 Red Simülasyonu...", COLORS['accent_3'])
-        df_sim = self.sonuclar['greedy']['df'].copy()
-        firmalar_kopya = [f.copy() for f in self.firmalar]
-        for _ in range(3):
-            df_sim = red_simulasyonu(df_sim, firmalar_kopya, self.red_orani.get())
-            df_sim, _, _ = greedy_atama(df_sim, firmalar_kopya)
-        df_sim["Mutluluk"] = df_sim.apply(mutluluk_skoru, axis=1)
-        self.sonuclar['red'] = {'df': df_sim, 'mutluluk': df_sim["Mutluluk"].sum()}
-        self.guncelle_tablo(df_sim)
-        self.guncelle_grafik()
+        if 'greedy' not in self.sonuclar:
+            messagebox.showwarning("Uyarı", "Önce Greedy algoritmasını çalıştırın!")
+            return
+        
+        try:
+            self.log("\n=== RED SİMÜLASYONU + YENİDEN ATAMA BAŞLADI ===", COLORS['accent_3'])
+            df_sim = self.sonuclar['greedy']['df'].copy()
+            firmalar_kopya = [f.copy() for f in self.firmalar]
+            
+            iterasyon = 0
+            # Başlangıç durumu
+            toplam_ogrenci = len(df_sim)
+            
+            while True:
+                iterasyon += 1
+                # 1. Firmalar öğrencileri reddeder
+                df_sim = red_simulasyonu(df_sim, firmalar_kopya, self.red_orani.get())
+                bos_kalan = df_sim["Yerlestigi_Firma"].isnull().sum()
+                self.log(f"İterasyon {iterasyon}: {bos_kalan} öğrenci şu an açıkta (Red sonrası).")
+
+                # 2. Açıkta kalanlar için Greedy tekrar çalışır
+                df_sim, _, _ = greedy_atama(df_sim, firmalar_kopya)
+                
+                yerlesen_sayisi = df_sim["Yerlestigi_Firma"].notnull().sum()
+                self.log(f"-> Atama sonrası: {yerlesen_sayisi}/{toplam_ogrenci} öğrenci yerleştirildi.")
+
+                # Eğer herkes yerleştiyse veya döngü takıldıysa bitir
+                if df_sim["Yerlestigi_Firma"].isnull().sum() == 0:
+                    self.log(f"✅ Başarılı: {iterasyon} iterasyonda tüm öğrenciler yerleşti!", COLORS['success'])
+                    break
+                
+                if iterasyon >= 10: # Sonsuz döngü koruması
+                    self.log(f"⚠️ Uyarı: 10 iterasyon sonunda {df_sim['Yerlestigi_Firma'].isnull().sum()} öğrenci yerleşemedi.", COLORS['warning'])
+                    break
+            
+            df_sim["Mutluluk"] = df_sim.apply(mutluluk_skoru, axis=1)
+            toplam_mutluluk = df_sim["Mutluluk"].sum()
+            
+            self.sonuclar['red'] = {
+                'df': df_sim,
+                'iterasyon': iterasyon,
+                'mutluluk': toplam_mutluluk
+            }
+            
+            self.guncelle_tablo(df_sim)
+            self.guncelle_grafik()
+            
+        except Exception as e:
+            messagebox.showerror("Hata", f"Red simülasyonu hatası: {str(e)}")
 
     def heuristik_calistir(self):
         base = self.sonuclar.get('red', self.sonuclar.get('greedy'))
